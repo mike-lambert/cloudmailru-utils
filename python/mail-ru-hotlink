@@ -1,0 +1,60 @@
+#!/usr/bin/python
+import sys;
+import random;
+import urllib2;
+import cookielib;
+import json;
+
+#common public addresses
+URL_PREFIX_PUBLIC = "https://cloud.mail.ru/public/"
+
+# hotlink targets
+URL_PREFIX_PICTURE = "https://cloclo{id}.datacloudmail.ru/weblink/thumb/xw1/"
+URL_PREFIX_VIDEO = "https://cloclo{id}.datacloudmail.ru/weblink/get/";
+
+# cloud.mail.ru APIs
+URL_API_DOWNLOAD_KEY = "https://cloud.mail.ru/api/v2/tokens/download";
+
+# so, i tired to enumerate and probe all, but 27 is definitely last
+LB_IDS = [2, 3, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 24, 25, 26, 27];
+
+def getLoadBalancer():
+  result = random.randint(0, len(LB_IDS));
+  return LB_IDS[result];
+
+def getPictureLink(source):
+  target = source.replace(URL_PREFIX_PUBLIC, "");
+  lbid = getLoadBalancer();
+  result = URL_PREFIX_PICTURE.replace("{id}", str(lbid)) + target;
+  return result;
+
+
+# video hotlink merely tricky and required 2-pass
+def getDownloadKey(source):
+  opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookielib.CookieJar()))
+  httpReq = urllib2.Request(source);
+  page =  opener.open(httpReq);
+  page.read();
+  page = opener.open(urllib2.Request(URL_API_DOWNLOAD_KEY));
+  api_json = page.read();
+  print api_json;
+  result = json.loads(api_json);
+  if result["status"] == 200:
+    result = result["body"]["token"];
+  else:
+    raise Exception("Download key API return error " + result["status"] + " for " + source);
+  return result;
+
+def getVideoLink(source):
+  target = source.replace(URL_PREFIX_PUBLIC, "");
+  lbid = getLoadBalancer();
+  result = URL_PREFIX_VIDEO.replace("{id}", str(lbid)) + target + "?key=" + getDownloadKey(source);
+  return result;
+
+if __name__ == "__main__":
+  source = sys.argv[1];
+  if len(sys.argv) == 2 or (len(sys.argv) > 2 and sys.argv[2] == "img"):
+    print getPictureLink(source);
+
+  if len(sys.argv) > 2 and sys.argv[2] == "video":
+    print getVideoLink(source);
